@@ -82,7 +82,7 @@ mod ui {
         backend::Backend,
         layout::{Constraint, Direction, Layout},
         style::{Color, Style},
-        widgets::{Block, Borders, Gauge, BarChart},
+        widgets::{Block, Borders, BarChart},
         Frame,
     };
 
@@ -104,7 +104,7 @@ mod ui {
         for (i, chunk) in chunks.into_iter().enumerate() {
             let data = &[("volume", 20 * i as u64)];
             let block = Block::default()
-                .title(format!("Window #{}", i))
+                .title(format!("Window #{i}"))
                 .borders(Borders::ALL);
             let bar = BarChart::default()
                 .block(block)
