@@ -82,7 +82,7 @@ mod ui {
         backend::Backend,
         layout::{Constraint, Direction, Layout},
         style::{Color, Style},
-        widgets::{Block, Borders, Gauge},
+        widgets::{Block, Borders, Gauge, BarChart},
         Frame,
     };
 
@@ -102,14 +102,16 @@ mod ui {
             )
             .split(f.size());
         for (i, chunk) in chunks.into_iter().enumerate() {
+            let data = &[("volume", 20 * i as u64)];
             let block = Block::default()
                 .title(format!("Window #{}", i))
                 .borders(Borders::ALL);
-            let gauge = Gauge::default()
+            let bar = BarChart::default()
                 .block(block)
-                .gauge_style(Style::default().fg(Color::DarkGray))
-                .percent(20);
-            f.render_widget(gauge, chunk);
+                .bar_style(Style::default().fg(Color::DarkGray))
+                .data(data)
+                .max(100);
+            f.render_widget(bar, chunk);
         }
     }
 }
