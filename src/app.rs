@@ -30,13 +30,14 @@ pub struct App {
 impl App {
     /// Launch Terminal Process and begin Listening for events
     pub fn run(&mut self) -> Result<()> {
-        self.start_up()?;
+        // Setup a Main Loop
+        self.start_up_tui()?;
         // Do Some Thing!
         thread::sleep(Duration::from_millis(5000));
-        self.shut_down()
+        self.shut_down_tui()
     }
 
-    fn start_up(&mut self) -> Result<()> {
+    fn start_up_tui(&mut self) -> Result<()> {
         enable_raw_mode()?;
 
         let mut stdout = io::stdout();
@@ -56,7 +57,7 @@ impl App {
         Ok(())
     }
 
-    fn shut_down(&mut self) -> Result<()> {
+    fn shut_down_tui(&mut self) -> Result<()> {
         disable_raw_mode()?;
         execute!(
             self.terminal
@@ -77,15 +78,13 @@ impl App {
 /// Module for defining UI stuff
 mod ui {
 
-
-    use log::{debug, error, info, warn};
     use tui::{
         backend::Backend,
         buffer::Buffer,
         layout::{Constraint, Direction, Layout, Rect},
         style::{Color, Style},
         symbols,
-        widgets::{BarChart, Block, Borders, Widget},
+        widgets::{Block, Borders, Widget},
         Frame,
     };
 
@@ -108,7 +107,9 @@ mod ui {
             let block = Block::default()
                 .title(format!("Window #{i}"))
                 .borders(Borders::ALL);
-            let bar = VolumeMeter::default().block(block).value(10u8.saturating_mul(i as u8) );
+            let bar = VolumeMeter::default()
+                .block(block)
+                .value(10u8.saturating_mul(i as u8));
             f.render_widget(bar, chunk);
         }
     }
@@ -161,14 +162,17 @@ mod ui {
             let bottom = meter_area.height - 1;
             let value_pos = bottom - ((bottom - top) * self.value as u16 / 100);
 
-
             // Draw the Meter
             for vert in top..=bottom {
                 let mut fg_color = Color::DarkGray;
                 let symbol = if vert == value_pos {
                     fg_color = Color::Gray;
-                    buf.get_mut(center - 1, vert).set_symbol(symbols::bar::FULL).set_fg(fg_color);
-                    buf.get_mut(center + 1, vert).set_symbol(symbols::bar::FULL).set_fg(fg_color);
+                    buf.get_mut(center - 1, vert)
+                        .set_symbol(symbols::bar::FULL)
+                        .set_fg(fg_color);
+                    buf.get_mut(center + 1, vert)
+                        .set_symbol(symbols::bar::FULL)
+                        .set_fg(fg_color);
                     symbols::bar::FULL
                 } else if vert == top {
                     symbols::line::THICK.horizontal_down
@@ -182,7 +186,9 @@ mod ui {
                 } else {
                     symbols::line::THICK.vertical
                 };
-                buf.get_mut(center, vert).set_symbol(symbol).set_fg(fg_color);
+                buf.get_mut(center, vert)
+                    .set_symbol(symbol)
+                    .set_fg(fg_color);
             }
 
             buf.set_stringn(
