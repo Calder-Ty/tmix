@@ -1,6 +1,6 @@
 mod app;
 
-use std::{cell::RefCell, io::Result, ops::Deref, rc::Rc, thread, sync::mpsc};
+use std::{cell::RefCell, io::Result, ops::Deref, rc::Rc, sync::mpsc, thread};
 
 use app::App;
 use pulse::{
@@ -25,8 +25,8 @@ fn main() -> Result<()> {
         let mut api = PulseAPI::new(tx);
         api.startup_connection();
         let mut count = 0;
-        while count < 1{
-            api.get_source_info();
+        while count < 1 {
+            api.get_sink_inputs();
             count += 1;
         }
         api.shutdown()
@@ -34,7 +34,9 @@ fn main() -> Result<()> {
 
     loop {
         match rx.recv() {
-            Ok(si) => {dbg!(si);},
+            Ok(si) => {
+                dbg!(si);
+            }
             Err(_) => {
                 eprintln!("Sender shutdown");
                 break;
