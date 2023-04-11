@@ -1,31 +1,33 @@
 //! Code to communicate with Pulse Server
-use log::{debug, error};
+use log::{debug, error, warn, info};
 use pulse::{
     callbacks::ListResult,
     channelmap,
-    context::{
-        introspect::{SinkInfo, SinkInputInfo, SourceInfo},
-        Context, FlagSet as ContextFlagSet,
-    },
-    def::{self, Retval},
+    context::{introspect::SinkInputInfo, Context, FlagSet as ContextFlagSet},
+    def::Retval,
     format,
     mainloop::standard::{IterateResult, Mainloop},
     proplist::Proplist,
     sample,
     time::MicroSeconds,
-    volume::{ChannelVolumes, Volume},
+    volume::ChannelVolumes,
 };
 use std::{
     borrow::BorrowMut,
-    cell::{RefCell, RefMut},
+    cell::RefCell,
     io::Result as IOResult,
-    ops::{Deref, DerefMut},
+    net::Shutdown,
     rc::Rc,
-    sync::mpsc::{Receiver, SendError, Sender},
+    sync::mpsc::{SendError, Sender},
 };
 
-type SinkData = Vec<SinkInputInformation>;
+#[derive(thiserror::Error, Debug)]
+pub enum PulseAPIError {
+    #[error("Shutdown Message Sent")]
+    Shutdown,
+}
 
+type SinkData = Vec<SinkInputInformation>;
 
 #[derive(Debug)]
 pub struct SinkInputInformation {
@@ -150,23 +152,28 @@ impl PulseAPI {
         Ok(())
     }
 
-    pub fn get_sink_inputs<'a>(&mut self) {
+    pub fn get_sink_inputs<'a>(&mut self) -> Result<(), PulseAPIError> {
         let introspector = self.ctx.introspect();
         let tx_inner = self.tx.clone();
-        let op =
-            introspector.get_sink_input_info_list(move |res: ListResult<&SinkInputInfo>| match res {
+        let shutdown_signal: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
+        let mut inner_shutdown_signal = shutdown_signal.clone();
+        let op = introspector.get_sink_input_info_list(move |res: ListResult<&SinkInputInfo>| {
+            match res {
                 pulse::callbacks::ListResult::Item(source) => match tx_inner.send(source.into()) {
                     Ok(_) => {}
                     Err(SendError(si)) => {
-                        error!("SendError Was recieved, Reciever must be shut down. Shutting Down");
-                        debug!("{:?}", si);
+                        info!("SendError Was recieved, Reciever must be shut down. Shutting Down");
+                        debug!("{:?}", si.volume.avg().print_verbose(true));
+                        inner_shutdown_signal.replace(true);
                     }
                 },
                 pulse::callbacks::ListResult::End => {}
                 pulse::callbacks::ListResult::Error => {
                     eprintln!("ERROR: Mr. Robinson");
                 }
-            });
+            }
+        });
+
         loop {
             self.mainloop.borrow_mut().iterate(false);
             match op.get_state() {
@@ -174,6 +181,11 @@ impl PulseAPI {
                 pulse::operation::State::Running => {}
             }
         }
+
+        if shutdown_signal.take() {
+            return Err(PulseAPIError::Shutdown);
+        }
+        Ok(())
     }
 
     pub fn shutdown(&mut self) {

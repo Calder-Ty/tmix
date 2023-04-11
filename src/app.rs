@@ -1,8 +1,9 @@
 //! UI Code for TMIX
 use std::{
     io::{self, Result},
+    sync::mpsc::Receiver,
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use crossterm::{
@@ -18,22 +19,39 @@ use tui::{
 };
 
 use self::ui::ui;
+use tmix::{data::DataManager, pulse_api::SinkInputInformation};
 
 const APP_NAME: &str = "TMIX";
 
 /// Application Manager For TMIX
-#[derive(Default)]
 pub struct App {
     terminal: Option<Terminal<CrosstermBackend<io::Stdout>>>,
+    data: DataManager,
+}
+
+pub enum UIMessages {
+    Shutdown,
+    Tick,
 }
 
 impl App {
+    pub fn new(rx: Receiver<SinkInputInformation>) -> Self {
+        Self {
+            terminal: None,
+            data: DataManager::new(rx),
+        }
+    }
+
     /// Launch Terminal Process and begin Listening for events
     pub fn run(&mut self) -> Result<()> {
         // Setup a Main Loop
         self.start_up_tui()?;
         // Do Some Thing!
-        thread::sleep(Duration::from_millis(5000));
+        let now = SystemTime::now();
+        while now.elapsed().expect("Something broke in time") < Duration::from_millis(15000) {
+            self.data.update();
+            self.draw_data()?;
+        }
         self.shut_down_tui()
     }
 
@@ -45,14 +63,18 @@ impl App {
         let backend = CrosstermBackend::new(stdout);
         self.terminal = Some(Terminal::new(backend)?);
 
+        Ok(())
+    }
+
+    fn draw_data(&mut self) -> Result<()> {
         self.terminal
             .as_mut()
-            .expect("Just Initailized")
+            .expect("don't draw till intialized")
             .draw(|f| {
                 let size = f.size();
                 let block = Block::default().title(APP_NAME).borders(Borders::ALL);
                 f.render_widget(block, size);
-                ui(f);
+                ui(f, &self.data);
             })?;
         Ok(())
     }
@@ -77,7 +99,11 @@ impl App {
 
 /// Module for defining UI stuff
 mod ui {
+    use std::collections::hash_map::Values;
 
+    use log::debug;
+    use pulse::volume::VolumeLinear;
+    use tmix::{data::DataManager, pulse_api::SinkInputInformation};
     use tui::{
         backend::Backend,
         buffer::Buffer,
@@ -88,7 +114,7 @@ mod ui {
         Frame,
     };
 
-    pub(crate) fn ui<B: Backend>(f: &mut Frame<B>) {
+    pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: &DataManager) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .margin(1)
@@ -103,14 +129,17 @@ mod ui {
                 .as_ref(),
             )
             .split(f.size());
-        for (i, chunk) in chunks.into_iter().enumerate() {
+        for (i, info) in data.values().enumerate() {
             let block = Block::default()
-                .title(format!("Window #{i}"))
+                .title(format!(
+                    "{}",
+                    info.name.as_ref().unwrap_or(&format!("Window {i}"))
+                ))
                 .borders(Borders::ALL);
             let bar = VolumeMeter::default()
                 .block(block)
-                .value(10u8.saturating_mul(i as u8));
-            f.render_widget(bar, chunk);
+                .value((Into::<VolumeLinear>::into(info.volume.avg()).0 * 100.0) as u8);
+            f.render_widget(bar, *chunks.get(i).expect("Testing for now"));
         }
     }
 

@@ -1,8 +1,9 @@
 mod app;
 
-use std::{cell::RefCell, io::Result, ops::Deref, rc::Rc, sync::mpsc, thread};
+use std::{cell::RefCell, io::Result, net::Shutdown, ops::Deref, rc::Rc, sync::mpsc, thread, time::Duration};
 
-use app::App;
+use app::{App, UIMessages};
+use log::error;
 use pulse::{
     context::{Context, FlagSet as ContextFlagSet},
     def::Retval,
@@ -16,33 +17,23 @@ use tmix::pulse_api::PulseAPI;
 
 fn main() -> Result<()> {
     simple_logger::SimpleLogger::new().env().init().unwrap();
-    // Setup the Terminal (Per Docs)
-    let mut applicaton = App::default();
 
     // Setup Connection to Pulse
     let (tx, rx) = mpsc::channel();
     let _pulse_thread = thread::spawn(|| {
         let mut api = PulseAPI::new(tx);
         api.startup_connection();
-        let mut count = 0;
-        while count < 1 {
-            api.get_sink_inputs();
-            count += 1;
+        loop {
+            match api.get_sink_inputs() {
+                Ok(_) => {}
+                Err(_) => break,
+            };
+            thread::sleep(Duration::from_millis(200))
         }
         api.shutdown()
     });
 
-    loop {
-        match rx.recv() {
-            Ok(si) => {
-                dbg!(si);
-            }
-            Err(_) => {
-                eprintln!("Sender shutdown");
-                break;
-            }
-        }
-    }
-    // applicaton.run()?;
+    let mut applicaton = App::new(rx);
+    applicaton.run()?;
     Ok(())
 }
