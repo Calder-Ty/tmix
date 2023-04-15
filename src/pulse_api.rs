@@ -1,7 +1,7 @@
 //! Code to communicate with Pulse Server
 use pulse::{
     callbacks::ListResult,
-    context::{introspect::SinkInputInfo, Context, FlagSet as ContextFlagSet},
+    context::{introspect::{SinkInputInfo, SinkInfo}, Context, FlagSet as ContextFlagSet},
     def::Retval,
     mainloop::standard::{IterateResult, Mainloop},
     proplist::Proplist,
@@ -12,13 +12,22 @@ use std::{
     rc::Rc,
 };
 
-use crate::data::SinkInputInformation;
+use crate::data::{SinkInputInformation, SinkInformation};
+
+pub struct VolumeInfo {
+
+    pub sink_inputs: Vec<SinkInputInformation>,
+    pub sink_info: Vec<SinkInformation>,
+}
 
 /// Higher Level Pulse API
 pub struct PulseAPI {
     mainloop: Mainloop,
     ctx: Context,
 }
+
+
+
 
 impl PulseAPI {
     pub fn new() -> Self {
@@ -62,7 +71,48 @@ impl PulseAPI {
         Ok(())
     }
 
-    pub fn get_sink_inputs<'a>(&mut self) -> IOResult<Rc<RefCell<Vec<SinkInputInformation>>>> {
+    pub fn get_volume_info(&mut self) -> IOResult<VolumeInfo> {
+
+        let sink_info = self.get_sink_info()?;
+        let sink_inpust = self.get_sink_inputs()?;
+
+        // SAFTEY: It is ok to take because by this point the callbacks have 
+        // completed and we are ready to move on
+        Ok(VolumeInfo { sink_inputs: sink_inpust.take(), sink_info: sink_info.take()})
+
+    }
+
+    pub fn get_sink_info(&mut self) -> IOResult<Rc<RefCell<Vec<SinkInformation>>>> {
+
+        let introspector = self.ctx.introspect();
+        let results: Rc<RefCell<Vec<SinkInformation>>> = Rc::new(RefCell::new(vec![]));
+        let results_inner = results.clone();
+        let op =
+            introspector.get_sink_info_list(
+                move |res: ListResult<&SinkInfo>| match res {
+                    pulse::callbacks::ListResult::Item(source) => {
+                        let mut r: RefMut<Vec<SinkInformation>> = results_inner.borrow_mut();
+                        r.push(source.into());
+                    }
+                    pulse::callbacks::ListResult::End => {}
+                    pulse::callbacks::ListResult::Error => {
+                        eprintln!("ERROR: Mr. Robinson");
+                    }
+                },
+            );
+
+        loop {
+            self.mainloop.iterate(false);
+            match op.get_state() {
+                pulse::operation::State::Done | pulse::operation::State::Cancelled => break,
+                pulse::operation::State::Running => {}
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn get_sink_inputs(&mut self) -> IOResult<Rc<RefCell<Vec<SinkInputInformation>>>> {
         let introspector = self.ctx.introspect();
         let results: Rc<RefCell<Vec<SinkInputInformation>>> = Rc::new(RefCell::new(vec![]));
         let results_inner = results.clone();

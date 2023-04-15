@@ -47,8 +47,8 @@ impl App {
         // Do Some Thing!
         let now = SystemTime::now();
         while now.elapsed().expect("Something broke in time") < Duration::from_millis(15000) {
-            let data = self.api.get_sink_inputs()?;
-            self.draw_data(data.take())?;
+            let data = self.api.get_volume_info()?;
+            self.draw_data(&data.sink_inputs)?;
             thread::sleep(Duration::from_millis(10));
         }
         self.shut_down_api();
@@ -66,7 +66,7 @@ impl App {
         Ok(())
     }
 
-    fn draw_data(&mut self, data: Vec<SinkInputInformation>) -> Result<()> {
+    fn draw_data(&mut self, data: &Vec<SinkInputInformation>) -> Result<()> {
         self.terminal
             .as_mut()
             .expect("don't draw till intialized")
@@ -74,7 +74,7 @@ impl App {
                 let size = f.size();
                 let block = Block::default().title(APP_NAME).borders(Borders::ALL);
                 f.render_widget(block, size);
-                ui(f, &data);
+                ui(f, data);
             })?;
         Ok(())
     }
