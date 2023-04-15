@@ -1,5 +1,5 @@
 //! Code to communicate with Pulse Server
-use log::{debug, error, warn, info};
+use log::{debug, error, info, warn};
 use pulse::{
     callbacks::ListResult,
     channelmap,
@@ -13,19 +13,12 @@ use pulse::{
     volume::ChannelVolumes,
 };
 use std::{
-    borrow::BorrowMut,
-    cell::RefCell,
+    cell::{RefCell, RefMut},
     io::Result as IOResult,
     net::Shutdown,
     rc::Rc,
     sync::mpsc::{SendError, Sender},
 };
-
-#[derive(thiserror::Error, Debug)]
-pub enum PulseAPIError {
-    #[error("Shutdown Message Sent")]
-    Shutdown,
-}
 
 type SinkData = Vec<SinkInputInformation>;
 
@@ -106,11 +99,10 @@ impl From<&SinkInputInfo<'_>> for SinkInputInformation {
 pub struct PulseAPI {
     mainloop: Mainloop,
     ctx: Context,
-    tx: Sender<SinkInputInformation>,
 }
 
 impl PulseAPI {
-    pub fn new(tx: Sender<SinkInputInformation>) -> Self {
+    pub fn new() -> Self {
         let mut proplist = Proplist::new().unwrap();
         proplist
             .set_str(pulse::proplist::properties::APPLICATION_NAME, "tmix")
@@ -120,18 +112,17 @@ impl PulseAPI {
         let ctx = Context::new_with_proplist(&mainloop, "tmixContext", &proplist)
             .expect("Failed to create new context");
 
-        PulseAPI { mainloop, ctx, tx }
+        PulseAPI { mainloop, ctx, }
     }
 
     pub fn startup_connection(&mut self) -> IOResult<()> {
         self.ctx
-            .borrow_mut()
             .connect(None, ContextFlagSet::NOFLAGS, None)
             .expect("Failed to connect context");
 
         // Wait for context to be ready
         loop {
-            match self.mainloop.borrow_mut().iterate(false) {
+            match self.mainloop.iterate(false) {
                 IterateResult::Quit(_) | IterateResult::Err(_) => {
                     eprintln!("Iterate state was not success, quitting...");
                     return Ok(());
@@ -152,21 +143,18 @@ impl PulseAPI {
         Ok(())
     }
 
-    pub fn get_sink_inputs<'a>(&mut self) -> Result<(), PulseAPIError> {
+    pub fn get_sink_inputs<'a>(
+        &mut self,
+    ) -> IOResult<Rc<RefCell<Vec<SinkInputInformation>>>> {
         let introspector = self.ctx.introspect();
-        let tx_inner = self.tx.clone();
-        let shutdown_signal: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
-        let mut inner_shutdown_signal = shutdown_signal.clone();
+        let results: Rc<RefCell<Vec<SinkInputInformation>>> = Rc::new(RefCell::new(vec![]));
+        let results_inner = results.clone();
         let op = introspector.get_sink_input_info_list(move |res: ListResult<&SinkInputInfo>| {
             match res {
-                pulse::callbacks::ListResult::Item(source) => match tx_inner.send(source.into()) {
-                    Ok(_) => {}
-                    Err(SendError(si)) => {
-                        info!("SendError Was recieved, Reciever must be shut down. Shutting Down");
-                        debug!("{:?}", si.volume.avg().print_verbose(true));
-                        inner_shutdown_signal.replace(true);
-                    }
-                },
+                pulse::callbacks::ListResult::Item(source) => {
+                    let mut r: RefMut<Vec<SinkInputInformation>> = results_inner.borrow_mut();
+                    r.push(source.into());
+                }
                 pulse::callbacks::ListResult::End => {}
                 pulse::callbacks::ListResult::Error => {
                     eprintln!("ERROR: Mr. Robinson");
@@ -175,22 +163,19 @@ impl PulseAPI {
         });
 
         loop {
-            self.mainloop.borrow_mut().iterate(false);
+            self.mainloop.iterate(false);
             match op.get_state() {
                 pulse::operation::State::Done | pulse::operation::State::Cancelled => break,
                 pulse::operation::State::Running => {}
             }
         }
 
-        if shutdown_signal.take() {
-            return Err(PulseAPIError::Shutdown);
-        }
-        Ok(())
+        Ok(results)
     }
 
     pub fn shutdown(&mut self) {
         self.ctx.disconnect();
         // Clean shutdown
-        self.mainloop.borrow_mut().quit(Retval(0)); // uncertain whether this is necessary
+        self.mainloop.quit(Retval(0)); // uncertain whether this is necessary
     }
 }

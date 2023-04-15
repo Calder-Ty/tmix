@@ -2,7 +2,7 @@
 use std::{
     io::{self, Result},
     sync::mpsc::Receiver,
-    thread,
+    thread::{self, sleep},
     time::{Duration, SystemTime},
 };
 
@@ -19,14 +19,14 @@ use tui::{
 };
 
 use self::ui::ui;
-use tmix::{data::DataManager, pulse_api::SinkInputInformation};
+use tmix::{data::DataManager, pulse_api::{SinkInputInformation, PulseAPI}};
 
 const APP_NAME: &str = "TMIX";
 
 /// Application Manager For TMIX
 pub struct App {
     terminal: Option<Terminal<CrosstermBackend<io::Stdout>>>,
-    data: DataManager,
+    api: PulseAPI
 }
 
 pub enum UIMessages {
@@ -35,11 +35,13 @@ pub enum UIMessages {
 }
 
 impl App {
-    pub fn new(rx: Receiver<SinkInputInformation>) -> Self {
-        Self {
+    pub fn try_new() -> Result<Self> {
+        let mut api = PulseAPI::new();
+        api.startup_connection()?;
+        Ok(Self {
             terminal: None,
-            data: DataManager::new(rx),
-        }
+            api: api,
+        })
     }
 
     /// Launch Terminal Process and begin Listening for events
@@ -49,9 +51,10 @@ impl App {
         // Do Some Thing!
         let now = SystemTime::now();
         while now.elapsed().expect("Something broke in time") < Duration::from_millis(15000) {
-            self.data.update();
-            self.draw_data()?;
+            let data = self.api.get_sink_inputs()?;
+            self.draw_data(data.take())?;
         }
+        self.shut_down_api();
         self.shut_down_tui()
     }
 
@@ -66,7 +69,7 @@ impl App {
         Ok(())
     }
 
-    fn draw_data(&mut self) -> Result<()> {
+    fn draw_data(&mut self, data: Vec<SinkInputInformation>) -> Result<()> {
         self.terminal
             .as_mut()
             .expect("don't draw till intialized")
@@ -74,7 +77,7 @@ impl App {
                 let size = f.size();
                 let block = Block::default().title(APP_NAME).borders(Borders::ALL);
                 f.render_widget(block, size);
-                ui(f, &self.data);
+                ui(f, &data);
             })?;
         Ok(())
     }
@@ -95,6 +98,10 @@ impl App {
             .show_cursor()?;
         Ok(())
     }
+
+    fn shut_down_api(&mut self) {
+        self.api.shutdown();
+    }
 }
 
 /// Module for defining UI stuff
@@ -114,12 +121,14 @@ mod ui {
         Frame,
     };
 
-    pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: &DataManager) {
+    pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: &Vec<SinkInputInformation>) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .margin(1)
             .constraints(
                 [
+                    // Eventually We will want to be able to handle more than 5 sliders
+                    // But I think we will alwyas only want 5 on screen at a time.
                     Constraint::Percentage(20),
                     Constraint::Percentage(20),
                     Constraint::Percentage(20),
@@ -129,7 +138,7 @@ mod ui {
                 .as_ref(),
             )
             .split(f.size());
-        for (i, info) in data.values().enumerate() {
+        for (i, info) in data.iter().enumerate() {
             let block = Block::default()
                 .title(format!(
                     "{}",

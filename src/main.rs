@@ -19,21 +19,7 @@ fn main() -> Result<()> {
     simple_logger::SimpleLogger::new().env().init().unwrap();
 
     // Setup Connection to Pulse
-    let (tx, rx) = mpsc::channel();
-    let _pulse_thread = thread::spawn(|| {
-        let mut api = PulseAPI::new(tx);
-        api.startup_connection();
-        loop {
-            match api.get_sink_inputs() {
-                Ok(_) => {}
-                Err(_) => break,
-            };
-            thread::sleep(Duration::from_millis(200))
-        }
-        api.shutdown()
-    });
-
-    let mut applicaton = App::new(rx);
+    let mut applicaton = App::try_new()?;
     applicaton.run()?;
     Ok(())
 }
