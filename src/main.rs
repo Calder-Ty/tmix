@@ -1,19 +1,8 @@
 mod app;
 
-use std::{cell::RefCell, io::Result, net::Shutdown, ops::Deref, rc::Rc, sync::mpsc, thread, time::Duration};
+use std::io::Result;
 
-use app::{App, UIMessages};
-use log::error;
-use pulse::{
-    context::{Context, FlagSet as ContextFlagSet},
-    def::Retval,
-    mainloop::standard::{IterateResult, Mainloop},
-    proplist::Proplist,
-    sample::{Format, Spec},
-    volume::ChannelVolumes,
-};
-
-use tmix::pulse_api::PulseAPI;
+use app::App;
 
 fn main() -> Result<()> {
     simple_logger::SimpleLogger::new().env().init().unwrap();
