@@ -73,19 +73,19 @@ impl PulseAPI {
 
     pub fn get_volume_info(&mut self) -> IOResult<VolumeInfo> {
 
-        let sink_inpust = self.get_sink_inputs()?;
-        let (op, sink_info) = self.get_sink_info()?;
+        let sink_inputs = self.get_sink_inputs()?;
+        let (info_op, sink_info) = self.get_sink_info()?;
 
         loop {
             self.mainloop.iterate(false);
-            match op.get_state() {
+            match info_op.get_state() {
                 pulse::operation::State::Done | pulse::operation::State::Cancelled => break,
                 pulse::operation::State::Running => {}
             }
         }
         // SAFTEY: It is ok to take because by this point the callbacks have 
         // completed and we are ready to move on
-        Ok(VolumeInfo { sink_inputs: sink_inpust.take(), sink_info: sink_info.take()})
+        Ok(VolumeInfo { sink_inputs: sink_inputs.take(), sink_info: sink_info.take()})
 
     }
 
