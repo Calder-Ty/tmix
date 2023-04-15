@@ -4,7 +4,7 @@ use pulse::{
     context::{introspect::{SinkInputInfo, SinkInfo}, Context, FlagSet as ContextFlagSet},
     def::Retval,
     mainloop::standard::{IterateResult, Mainloop},
-    proplist::Proplist,
+    proplist::Proplist, operation::Operation,
 };
 use std::{
     cell::{RefCell, RefMut},
@@ -73,16 +73,23 @@ impl PulseAPI {
 
     pub fn get_volume_info(&mut self) -> IOResult<VolumeInfo> {
 
-        let sink_info = self.get_sink_info()?;
         let sink_inpust = self.get_sink_inputs()?;
+        let (op, sink_info) = self.get_sink_info()?;
 
+        loop {
+            self.mainloop.iterate(false);
+            match op.get_state() {
+                pulse::operation::State::Done | pulse::operation::State::Cancelled => break,
+                pulse::operation::State::Running => {}
+            }
+        }
         // SAFTEY: It is ok to take because by this point the callbacks have 
         // completed and we are ready to move on
         Ok(VolumeInfo { sink_inputs: sink_inpust.take(), sink_info: sink_info.take()})
 
     }
 
-    pub fn get_sink_info(&mut self) -> IOResult<Rc<RefCell<Vec<SinkInformation>>>> {
+    pub fn get_sink_info(&mut self) -> IOResult<(Operation<dyn FnMut(ListResult<&SinkInfo>)>,Rc<RefCell<Vec<SinkInformation>>>)> {
 
         let introspector = self.ctx.introspect();
         let results: Rc<RefCell<Vec<SinkInformation>>> = Rc::new(RefCell::new(vec![]));
@@ -101,15 +108,8 @@ impl PulseAPI {
                 },
             );
 
-        loop {
-            self.mainloop.iterate(false);
-            match op.get_state() {
-                pulse::operation::State::Done | pulse::operation::State::Cancelled => break,
-                pulse::operation::State::Running => {}
-            }
-        }
 
-        Ok(results)
+        Ok((op, results))
     }
 
     pub fn get_sink_inputs(&mut self) -> IOResult<Rc<RefCell<Vec<SinkInputInformation>>>> {
