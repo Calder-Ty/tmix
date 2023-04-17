@@ -20,7 +20,7 @@ use tui::{
 };
 
 use self::ui::ui;
-use tmix::{pulse_api::{PulseAPI, VolumeInfo}, data::SinkInputInformation};
+use tmix::{pulse_api::{PulseAPI, VolumeInfo}};
 
 const APP_NAME: &str = "TMIX";
 

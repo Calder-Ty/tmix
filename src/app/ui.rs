@@ -1,7 +1,7 @@
 //! UI Functions
 
 use pulse::volume::VolumeLinear;
-use tmix::{data::SinkInputInformation, pulse_api::VolumeInfo};
+use tmix::{pulse_api::VolumeInfo};
 use tui::{
     backend::Backend,
     buffer::Buffer,
@@ -31,7 +31,7 @@ pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: VolumeInfo) {
         .split(f.size());
     for (chunk, (i, info)) in data.iter().enumerate() {
 
-        let sink_volume = (Into::<VolumeLinear>::into(info.sink().volume.avg()).0);
+        let sink_volume = Into::<VolumeLinear>::into(info.sink().volume.avg()).0;
 
         let block = Block::default()
             .title(format!(
