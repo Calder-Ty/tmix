@@ -20,7 +20,7 @@ use tui::{
 };
 
 use self::ui::ui;
-use tmix::{pulse_api::PulseAPI, data::SinkInputInformation};
+use tmix::{pulse_api::{PulseAPI, VolumeInfo}, data::SinkInputInformation};
 
 const APP_NAME: &str = "TMIX";
 
@@ -48,7 +48,7 @@ impl App {
         let now = SystemTime::now();
         while now.elapsed().expect("Something broke in time") < Duration::from_millis(15000) {
             let data = self.api.get_volume_info()?;
-            self.draw_data(&data.sink_inputs)?;
+            self.draw_data(data)?;
             thread::sleep(Duration::from_millis(10));
         }
         self.shut_down_api();
@@ -66,7 +66,7 @@ impl App {
         Ok(())
     }
 
-    fn draw_data(&mut self, data: &Vec<SinkInputInformation>) -> Result<()> {
+    fn draw_data(&mut self, data: VolumeInfo) -> Result<()> {
         self.terminal
             .as_mut()
             .expect("don't draw till intialized")

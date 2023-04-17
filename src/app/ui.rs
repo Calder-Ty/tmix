@@ -1,7 +1,7 @@
 //! UI Functions
 
 use pulse::volume::VolumeLinear;
-use tmix::data::SinkInputInformation;
+use tmix::{data::SinkInputInformation, pulse_api::VolumeInfo};
 use tui::{
     backend::Backend,
     buffer::Buffer,
@@ -12,7 +12,7 @@ use tui::{
     Frame,
 };
 
-pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: &Vec<SinkInputInformation>) {
+pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: VolumeInfo) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .margin(1)
@@ -29,17 +29,38 @@ pub(crate) fn ui<B: Backend>(f: &mut Frame<B>, data: &Vec<SinkInputInformation>)
             .as_ref(),
         )
         .split(f.size());
-    for (i, info) in data.iter().enumerate() {
+    for (chunk, (i, info)) in data.iter().enumerate() {
+
+        let sink_volume = (Into::<VolumeLinear>::into(info.sink().volume.avg()).0);
+
         let block = Block::default()
             .title(format!(
                 "{}",
-                info.name.as_ref().unwrap_or(&format!("Window {i}"))
+                info.sink().name.as_ref().unwrap_or(&format!("Window {i}"))
             ))
             .borders(Borders::ALL);
         let bar = VolumeMeter::default()
             .block(block)
-            .value((Into::<VolumeLinear>::into(info.volume.avg()).0 * 100.0) as u8);
-        f.render_widget(bar, *chunks.get(i).expect("Testing for now"));
+            .value((sink_volume * 100.0) as u8);
+        f.render_widget(bar, *chunks.get(chunk).expect("Testing for now"));
+
+        let mut count = chunk + 1;
+
+        for input in info.iter() {
+            let input_volume = (Into::<VolumeLinear>::into(input.volume.avg()).0 * 100.0) * sink_volume;
+            let block = Block::default()
+                .title(format!(
+                    "{}",
+                    input.name.as_ref().unwrap_or(&format!("Window {i}"))
+                ))
+                .borders(Borders::ALL);
+            let bar = VolumeMeter::default()
+                .block(block)
+                .value(input_volume as u8);
+            f.render_widget(bar, *chunks.get(count).expect("Testing for now"));
+            count += 1;
+        }
+
     }
 }
 
